@@ -47,7 +47,11 @@ func (w *Watcher) WatchTransactions() {
 			return
 		}
 
-		tx := txs[0] // Get the latest transaction
+		// Get the number of transactions
+		log.Println("Found", len(txs), "transactions")
+
+		// Get the latest transaction
+		tx := txs[0]
 
 		// Print Transaction Details
 		log.Println("Transaction ID:", tx.TxID)
