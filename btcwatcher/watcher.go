@@ -1,6 +1,7 @@
 package btcwatcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -39,7 +40,31 @@ func (w *Watcher) WatchTransactions() {
 			continue
 		}
 
-		log.Println("Latest Transactions:", resp.String())
+		// Parse the response
+		var tx Transaction
+		if err := json.Unmarshal(resp.Body(), &tx); err != nil {
+			log.Println("Error decoding JSON:", err)
+			return
+		}
+
+		// Print Transaction Details
+		log.Println("Transaction ID:", tx.TxID)
+		log.Println("Size:", tx.Size, "bytes")
+		log.Println("Fee:", tx.Fee, "satoshis")
+		log.Println("Confirmed:", tx.Status.Confirmed)
+		log.Println("Block Height:", tx.Status.BlockHeight)
+
+		// Print Inputs (vin)
+		log.Println("\n🔹 Inputs (vin):")
+		for _, vin := range tx.Vin {
+			log.Printf("- From: %s (Spent %.8f BTC)\n", vin.Prevout.Address, float64(vin.Prevout.Value)/1e8)
+		}
+
+		// Print Outputs (vout)
+		log.Println("\n🔹 Outputs (vout):")
+		for _, vout := range tx.Vout {
+			log.Printf("- To: %s (Received %.8f BTC)\n", vout.ScriptPubKeyAddress, float64(vout.Value)/1e8)
+		}
 
 		time.Sleep(10 * time.Second) // Poll every 10 sec
 	}
