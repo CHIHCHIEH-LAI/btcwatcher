@@ -41,11 +41,13 @@ func (w *Watcher) WatchTransactions() {
 		}
 
 		// Parse the response
-		var tx Transaction
-		if err := json.Unmarshal(resp.Body(), &tx); err != nil {
+		var txs []Transaction
+		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
 			log.Println("Error decoding JSON:", err)
 			return
 		}
+
+		tx := txs[0] // Get the latest transaction
 
 		// Print Transaction Details
 		log.Println("Transaction ID:", tx.TxID)
@@ -65,6 +67,8 @@ func (w *Watcher) WatchTransactions() {
 		for _, vout := range tx.Vout {
 			log.Printf("- To: %s (Received %.8f BTC)\n", vout.ScriptPubKeyAddress, float64(vout.Value)/1e8)
 		}
+
+		log.Println()
 
 		time.Sleep(10 * time.Second) // Poll every 10 sec
 	}
