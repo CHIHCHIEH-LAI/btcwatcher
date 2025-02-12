@@ -8,8 +8,7 @@ func main() {
 	network := "mainnet"
 
 	addresses := []string{
-		"tb1qexampleaddress1",
-		"tb1qexampleaddress2",
+		"1LdRcdxfbSnmCYYNdeYpUnztiYzVfBEQeC",
 	}
 
 	// Initialize the BTC Watcher
@@ -23,4 +22,6 @@ func main() {
 	// for tx := range btcWatcher.TxChannel {
 	// 	fmt.Printf("✅ New Transaction: %s -> %s (%.8f BTC)\n", tx.TxID, tx.Address, float64(tx.Value)/1e8)
 	// }
+
+	select {}
 }
