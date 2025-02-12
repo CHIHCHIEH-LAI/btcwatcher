@@ -6,7 +6,7 @@ type Block struct {
 	Height            int     `json:"height"`            // Block height
 	Version           int     `json:"version"`           // Version of the block
 	Timestamp         int64   `json:"timestamp"`         // Block timestamp (Unix time)
-	Bits              string  `json:"bits"`              // Compact target difficulty representation
+	Bits              int     `json:"bits"`              // Compact target difficulty representation
 	Nonce             int64   `json:"nonce"`             // Nonce used for mining
 	Difficulty        float64 `json:"difficulty"`        // Actual mining difficulty
 	MerkleRoot        string  `json:"merkle_root"`       // Root hash of transactions
