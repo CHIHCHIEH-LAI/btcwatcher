@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/watcher"
 )
 
@@ -19,9 +21,7 @@ func main() {
 	defer btcWatcher.Close()
 
 	// Receive new transactions from the channel
-	// for tx := range btcWatcher.TxChannel {
-	// 	fmt.Printf("✅ New Transaction: %s -> %s (%.8f BTC)\n", tx.TxID, tx.Address, float64(tx.Value)/1e8)
-	// }
-
-	select {}
+	for tx := range btcWatcher.TxChannel {
+		log.Println(tx)
+	}
 }
