@@ -116,7 +116,14 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 
 // getNewBlocks gets new blocks
 func (w *BTCWatcher) getNewBlocks() []*Block {
-	blocks := w.getBlocks(w.LastBlockHeight + 1)
+	// Get the latest block height
+	latestBlockHeight := w.getLatestBlockHeight()
+
+	if latestBlockHeight <= w.LastBlockHeight {
+		return nil
+	}
+
+	blocks := w.getBlocks(w.LastBlockHeight+1, latestBlockHeight)
 
 	// Return if no new blocks
 	if blocks == nil {
@@ -124,24 +131,28 @@ func (w *BTCWatcher) getNewBlocks() []*Block {
 	}
 
 	// Update the last block height
-	latestBlockHeight := blocks[len(blocks)-1].Height
 	w.updateLastBlockHeight(latestBlockHeight)
 
 	return blocks
 }
 
 // getBlock gets the block at the given height
-func (w *BTCWatcher) getBlocks(start_height int) []*Block {
-	// Get the block at the given height
-	resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/%d", w.BaseUrl, start_height))
-	if err != nil {
-		return nil
-	}
-
-	// Parse the response
+func (w *BTCWatcher) getBlocks(start_height, end_height int) []*Block {
 	var blocks []*Block
-	if err := json.Unmarshal(resp.Body(), &blocks); err != nil {
-		return nil
+	for i := start_height; i < end_height+25; i += 25 {
+		// Get the blocks starting from the given height
+		resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/%d", w.BaseUrl, start_height))
+		if err != nil {
+			return nil
+		}
+
+		// Parse the response
+		var subBlocks []*Block
+		if err := json.Unmarshal(resp.Body(), &subBlocks); err != nil {
+			return nil
+		}
+
+		blocks = append(blocks, subBlocks...)
 	}
 
 	return blocks
