@@ -26,7 +26,7 @@ func NewBTCWatcher(network string, watchedAddresses []string) *BTCWatcher {
 		StopRunning: make(chan bool),
 	}
 
-	btcwatcher.LastBlockHeight = btcwatcher.getLatestBlockHeight() - 2
+	btcwatcher.LastBlockHeight = btcwatcher.getLatestBlockHeight()
 	btcwatcher.setWatchedAddresses(watchedAddresses)
 	btcwatcher.setBaseUrl(network)
 
@@ -94,14 +94,12 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 	if blocks == nil {
 		return
 	}
-	log.Printf("Found %d new blocks\n", len(blocks))
 
 	// Get transactions from the blocks
 	txs := w.getTxsFromBlocks(blocks)
 
 	// Filter transactions by watched addresses
 	filteredTxs := w.filterTxsByWatchedAddresses(txs)
-	log.Printf("Found %d new transactions\n", len(filteredTxs))
 
 	// Send transactions to the channel
 	w.sendTransactionsToChannel(filteredTxs)
@@ -149,7 +147,8 @@ func (w *BTCWatcher) updateLastBlockHeight(height int) {
 func (w *BTCWatcher) getTxsFromBlocks(blocks []*Block) []*Transaction {
 	var transactions []*Transaction
 	for _, block := range blocks {
-		transactions = append(transactions, w.getTxsFromBlock(block)...)
+		txs := w.getTxsFromBlock(block)
+		transactions = append(transactions, txs...)
 	}
 
 	return transactions
@@ -163,13 +162,13 @@ func (w *BTCWatcher) getTxsFromBlock(block *Block) []*Transaction {
 		// Get transactions for the block
 		resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%s/txs", w.BaseUrl, block.ID))
 		if err != nil {
-			return nil
+			continue
 		}
 
 		// Parse the response
 		var txs []*Transaction
 		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
-			return nil
+			continue
 		}
 
 		transactions = append(transactions, txs...)
