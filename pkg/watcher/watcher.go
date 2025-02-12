@@ -59,7 +59,7 @@ func (w *BTCWatcher) Run() {
 			return
 		default:
 			w.getNewTransactions()
-			time.Sleep(10 * time.Second) // Check every 10 sec
+			time.Sleep(60 * time.Second) // Check every 10 sec
 		}
 	}
 }
