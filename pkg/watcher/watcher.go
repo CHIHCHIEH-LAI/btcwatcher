@@ -18,8 +18,8 @@ type BTCWatcher struct {
 	StopRunning      chan bool
 }
 
-// NewWatcher initializes the watcher with the network and addresses to watch
-func NewWatcher(network string, watchedAddresses []string) *BTCWatcher {
+// NewBTCWatcher creates a new BTCWatcher instance with the given network and watched addresses
+func NewBTCWatcher(network string, watchedAddresses []string) *BTCWatcher {
 	btcwatcher := &BTCWatcher{
 		Client:          resty.New(),
 		LastBlockHeight: 0,
@@ -74,15 +74,20 @@ func (w *BTCWatcher) Close() {
 // getNewTransactions gets new transactions from the Blockstream API
 func (w *BTCWatcher) getNewTransactions() {
 	latestBlockHeight, err := w.getLatestBlockHeight()
+	log.Println("Latest block height:", latestBlockHeight)
 	if err != nil {
 		log.Println("Error fetching latest block height:", err)
 		return
 	}
 	if latestBlockHeight > w.LastBlockHeight {
 		// Process missing blocks
-		for height := w.LastBlockHeight + 1; height <= latestBlockHeight; height++ {
-			w.getTransactionsFromBlock(height)
-		}
+		// for height := w.LastBlockHeight + 1; height <= latestBlockHeight; height++ {
+		// 	block := w.getBlock(height)
+		// 	if block == nil {
+		// 		continue
+		// 	}
+		// 	log.Println("Processing block:", block.ID)
+		// }
 		w.LastBlockHeight = latestBlockHeight
 	}
 }
@@ -102,16 +107,21 @@ func (w *BTCWatcher) getLatestBlockHeight() (int, error) {
 	return height, nil
 }
 
-// getTransactionsFromBlock gets transactions from a block
-func (w *BTCWatcher) getTransactionsFromBlock(height int) error {
+// getBlock gets the block at the given height
+func (w *BTCWatcher) getBlock(height int) *Block {
 	resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%d", w.BaseUrl, height))
 	if err != nil {
-		return fmt.Errorf("error fetching block %d: %v", height, err)
+		log.Println("Error fetching block:", err)
+		return nil
 	}
 
-	log.Println(resp.String())
+	var block Block
+	if err := json.Unmarshal(resp.Body(), &block); err != nil {
+		log.Println("Error decoding JSON:", err)
+		return nil
+	}
 
-	return nil
+	return &block
 }
 
 // // WatchTransactions polls the Blockstream API for new transactions
