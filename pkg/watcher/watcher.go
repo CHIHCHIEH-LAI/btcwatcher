@@ -26,9 +26,10 @@ func NewBTCWatcher(network string, watchedAddresses []string) *BTCWatcher {
 		StopRunning: make(chan bool),
 	}
 
-	btcwatcher.LastBlockHeight = btcwatcher.getLatestBlockHeight()
-	btcwatcher.setWatchedAddresses(watchedAddresses)
 	btcwatcher.setBaseUrl(network)
+	btcwatcher.setWatchedAddresses(watchedAddresses)
+
+	btcwatcher.LastBlockHeight = btcwatcher.getLatestBlockHeight() - 1
 
 	return btcwatcher
 }
