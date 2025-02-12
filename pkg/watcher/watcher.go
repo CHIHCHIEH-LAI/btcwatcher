@@ -119,16 +119,13 @@ func (w *BTCWatcher) getNewBlocks() []*Block {
 	// Get the latest block height
 	latestBlockHeight := w.getLatestBlockHeight()
 
-	if latestBlockHeight <= w.LastBlockHeight {
+	heightDiff := latestBlockHeight - w.LastBlockHeight
+	if heightDiff <= 0 {
 		return nil
 	}
 
 	blocks := w.getBlocks(w.LastBlockHeight+1, latestBlockHeight)
-
-	// Return if no new blocks
-	if blocks == nil {
-		return nil
-	}
+	blocks = blocks[:heightDiff]
 
 	// Update the last block height
 	w.updateLastBlockHeight(latestBlockHeight)
@@ -139,17 +136,17 @@ func (w *BTCWatcher) getNewBlocks() []*Block {
 // getBlock gets the block at the given height
 func (w *BTCWatcher) getBlocks(start_height, end_height int) []*Block {
 	var blocks []*Block
-	for i := start_height; i < end_height+25; i += 25 {
+	for i := start_height; i <= end_height; i += 10 {
 		// Get the blocks starting from the given height
 		resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/%d", w.BaseUrl, start_height))
 		if err != nil {
-			return nil
+			continue
 		}
 
 		// Parse the response
 		var subBlocks []*Block
 		if err := json.Unmarshal(resp.Body(), &subBlocks); err != nil {
-			return nil
+			continue
 		}
 
 		blocks = append(blocks, subBlocks...)
@@ -178,7 +175,7 @@ func (w *BTCWatcher) getTxsFromBlocks(blocks []*Block) []*Transaction {
 func (w *BTCWatcher) getTxsFromBlock(block *Block) []*Transaction {
 	var transactions []*Transaction
 	txCount := block.TxCount
-	for i := 0; i < txCount+25; i += 25 {
+	for i := 0; i < txCount; i += 25 {
 		// Get transactions for the block
 		resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%s/txs", w.BaseUrl, block.ID))
 		if err != nil {
