@@ -57,7 +57,7 @@ func (w *BTCWatcher) Run() {
 		case <-w.StopRunning:
 			return
 		default:
-			w.getNewTransactions()
+			w.watchNewTxsFromWatchedAddresses()
 			time.Sleep(60 * time.Second) // Check every 10 sec
 		}
 	}
@@ -70,26 +70,36 @@ func (w *BTCWatcher) Close() {
 	close(w.StopRunning)
 }
 
-// getNewTransactions gets new transactions from the Blockstream API
-func (w *BTCWatcher) getNewTransactions() error {
-	// Get the latest blocks at the current height + 1
-	blocks := w.getBlocks(w.LastBlockHeight + 1)
+// watchNewTxsFromWatchedAddresses watches new transactions from the watched addresses
+func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
+	// Get new blocks
+	blocks := w.getNewBlocks()
 	if blocks == nil {
-		return fmt.Errorf("error fetching blocks")
+		return
+	}
+
+	// Get transactions from the blocks
+	txs := w.getTxsFromBlocks(blocks)
+	filteredTxs := w.filterTxsByWatchedAddresses(txs)
+
+	// Send transactions to the channel
+	w.sendTransactionsToChannel(filteredTxs)
+}
+
+// getNewBlocks gets new blocks
+func (w *BTCWatcher) getNewBlocks() []*Block {
+	blocks := w.getBlocks(w.LastBlockHeight + 1)
+
+	// Return if no new blocks
+	if blocks == nil {
+		return nil
 	}
 
 	// Update the last block height
 	latestBlockHeight := blocks[len(blocks)-1].Height
 	w.updateLastBlockHeight(latestBlockHeight)
 
-	// Get transactions from the latest blocks
-	var transactions []*Transaction
-	for _, block := range blocks {
-		txs := w.getTransactionsFromBlock(block)
-		transactions = append(transactions, txs...)
-	}
-
-	return nil
+	return blocks
 }
 
 // getBlock gets the block at the given height
@@ -114,13 +124,23 @@ func (w *BTCWatcher) updateLastBlockHeight(height int) {
 	w.LastBlockHeight = height
 }
 
-// getTransactionsFromBlock gets transactions from the given block
-func (w *BTCWatcher) getTransactionsFromBlock(block *Block) []*Transaction {
+// getTxsFromBlocks gets transactions from the given blocks
+func (w *BTCWatcher) getTxsFromBlocks(blocks []*Block) []*Transaction {
+	var transactions []*Transaction
+	for _, block := range blocks {
+		transactions = append(transactions, w.getTxsFromBlock(block)...)
+	}
+
+	return transactions
+}
+
+// getTxsFromBlock gets transactions from the given block
+func (w *BTCWatcher) getTxsFromBlock(block *Block) []*Transaction {
 	var transactions []*Transaction
 	txCount := block.TxCount
-	for i := 0; i < txCount; i += 25 {
+	for i := 0; i < txCount+25; i += 25 {
 		// Get transactions for the block
-		resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%s", w.BaseUrl, block.ID))
+		resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%s/txs", w.BaseUrl, block.ID))
 		if err != nil {
 			return nil
 		}
@@ -135,4 +155,34 @@ func (w *BTCWatcher) getTransactionsFromBlock(block *Block) []*Transaction {
 	}
 
 	return transactions
+}
+
+// filterTxsByWatchedAddresses filters transactions by watched addresses
+func (w *BTCWatcher) filterTxsByWatchedAddresses(txs []*Transaction) []*Transaction {
+	var filteredTxs []*Transaction
+	for _, tx := range txs {
+		if w.txContainsWatchedAddress(tx) {
+			filteredTxs = append(filteredTxs, tx)
+		}
+	}
+
+	return filteredTxs
+}
+
+// txContainsWatchedAddress checks if the transaction contains a watched address
+func (w *BTCWatcher) txContainsWatchedAddress(tx *Transaction) bool {
+	for _, vout := range tx.Vout {
+		if w.WatchedAddresses[vout.ScriptPubKeyAddress] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sendTransactionsToChannel sends transactions to the channel
+func (w *BTCWatcher) sendTransactionsToChannel(txs []*Transaction) {
+	for _, tx := range txs {
+		w.TxChannel <- *tx
+	}
 }
