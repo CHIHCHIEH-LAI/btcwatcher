@@ -76,7 +76,7 @@ func (w *BTCWatcher) Run() {
 		default:
 			log.Printf("Watching new transactions at block height %d\n", w.LastBlockHeight)
 			w.watchNewTxsFromWatchedAddresses()
-			log.Println()
+			log.Println("Finished watching. Sleeping...")
 			time.Sleep(60 * time.Second) // Check every 10 seconds
 		}
 	}
