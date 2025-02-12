@@ -80,6 +80,8 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 
 	// Get transactions from the blocks
 	txs := w.getTxsFromBlocks(blocks)
+
+	// Filter transactions by watched addresses
 	filteredTxs := w.filterTxsByWatchedAddresses(txs)
 
 	// Send transactions to the channel
