@@ -10,7 +10,8 @@ func main() {
 	network := "mainnet"
 
 	addresses := []string{
-		"1LdRcdxfbSnmCYYNdeYpUnztiYzVfBEQeC",
+		"34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo",                             // Binance
+		"bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97", // Bitfinex
 	}
 
 	// Initialize the BTC Watcher
