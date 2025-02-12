@@ -104,11 +104,11 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 
 	// Filter transactions by watched addresses
 	filteredTxs := w.filterTxsByWatchedAddresses(txs)
-	if txs == nil {
+	if filteredTxs == nil {
 		log.Printf("No new transactions found\n")
 		return
 	}
-	log.Printf("Found %d new transactions\n", len(txs))
+	log.Printf("Found %d new transactions\n", len(filteredTxs))
 
 	// Send transactions to the channel
 	w.sendTransactionsToChannel(filteredTxs)
@@ -220,6 +220,7 @@ func (w *BTCWatcher) txContainsWatchedAddress(tx *Transaction) bool {
 // sendTransactionsToChannel sends transactions to the channel
 func (w *BTCWatcher) sendTransactionsToChannel(txs []*Transaction) {
 	for _, tx := range txs {
+		log.Printf("Sending transaction %s to the channel\n", tx.TxID)
 		w.TxChannel <- tx
 	}
 }
