@@ -14,7 +14,7 @@ type BTCWatcher struct {
 	BaseUrl          string
 	WatchedAddresses map[string]bool
 	LastBlockHeight  int
-	TxChannel        chan Transaction
+	TxChannel        chan *Transaction
 	StopRunning      chan bool
 }
 
@@ -22,7 +22,7 @@ type BTCWatcher struct {
 func NewBTCWatcher(network string, watchedAddresses []string) *BTCWatcher {
 	btcwatcher := &BTCWatcher{
 		Client:      resty.New(),
-		TxChannel:   make(chan Transaction),
+		TxChannel:   make(chan *Transaction),
 		StopRunning: make(chan bool),
 	}
 
@@ -73,9 +73,10 @@ func (w *BTCWatcher) Run() {
 		case <-w.StopRunning:
 			return
 		default:
-			log.Println("Checking for new transactions...")
+			log.Printf("Watching new transactions at block height %d\n", w.LastBlockHeight)
 			w.watchNewTxsFromWatchedAddresses()
-			time.Sleep(60 * time.Second) // Check every 10 sec
+			log.Println()
+			time.Sleep(60 * time.Second) // Check every 10 seconds
 		}
 	}
 }
@@ -92,14 +93,21 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 	// Get new blocks
 	blocks := w.getNewBlocks()
 	if blocks == nil {
+		log.Printf("No new blocks found\n")
 		return
 	}
+	log.Printf("Found %d new blocks\n", len(blocks))
 
 	// Get transactions from the blocks
 	txs := w.getTxsFromBlocks(blocks)
 
 	// Filter transactions by watched addresses
 	filteredTxs := w.filterTxsByWatchedAddresses(txs)
+	if txs == nil {
+		log.Printf("No new transactions found\n")
+		return
+	}
+	log.Printf("Found %d new transactions\n", len(txs))
 
 	// Send transactions to the channel
 	w.sendTransactionsToChannel(filteredTxs)
@@ -203,6 +211,6 @@ func (w *BTCWatcher) txContainsWatchedAddress(tx *Transaction) bool {
 // sendTransactionsToChannel sends transactions to the channel
 func (w *BTCWatcher) sendTransactionsToChannel(txs []*Transaction) {
 	for _, tx := range txs {
-		w.TxChannel <- *tx
+		w.TxChannel <- tx
 	}
 }
