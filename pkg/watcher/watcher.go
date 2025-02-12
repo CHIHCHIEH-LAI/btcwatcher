@@ -3,6 +3,7 @@ package watcher
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -20,16 +21,31 @@ type BTCWatcher struct {
 // NewBTCWatcher creates a new BTCWatcher instance with the given network and watched addresses
 func NewBTCWatcher(network string, watchedAddresses []string) *BTCWatcher {
 	btcwatcher := &BTCWatcher{
-		Client:          resty.New(),
-		LastBlockHeight: 0,
-		TxChannel:       make(chan Transaction),
-		StopRunning:     make(chan bool),
+		Client:      resty.New(),
+		TxChannel:   make(chan Transaction),
+		StopRunning: make(chan bool),
 	}
 
+	btcwatcher.LastBlockHeight = btcwatcher.getLatestBlockHeight() - 2
 	btcwatcher.setWatchedAddresses(watchedAddresses)
 	btcwatcher.setBaseUrl(network)
 
 	return btcwatcher
+}
+
+// getLatestBlockHeight gets the latest block height
+func (w *BTCWatcher) getLatestBlockHeight() int {
+	resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/tip/height", w.BaseUrl))
+	if err != nil {
+		return 0
+	}
+
+	var height int
+	if err := json.Unmarshal(resp.Body(), &height); err != nil {
+		return 0
+	}
+
+	return height
 }
 
 // setWatchedAddresses sets the addresses to watch
@@ -57,6 +73,7 @@ func (w *BTCWatcher) Run() {
 		case <-w.StopRunning:
 			return
 		default:
+			log.Println("Checking for new transactions...")
 			w.watchNewTxsFromWatchedAddresses()
 			time.Sleep(60 * time.Second) // Check every 10 sec
 		}
@@ -77,12 +94,14 @@ func (w *BTCWatcher) watchNewTxsFromWatchedAddresses() {
 	if blocks == nil {
 		return
 	}
+	log.Printf("Found %d new blocks\n", len(blocks))
 
 	// Get transactions from the blocks
 	txs := w.getTxsFromBlocks(blocks)
 
 	// Filter transactions by watched addresses
 	filteredTxs := w.filterTxsByWatchedAddresses(txs)
+	log.Printf("Found %d new transactions\n", len(filteredTxs))
 
 	// Send transactions to the channel
 	w.sendTransactionsToChannel(filteredTxs)
