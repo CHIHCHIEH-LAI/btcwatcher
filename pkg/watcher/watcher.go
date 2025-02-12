@@ -3,7 +3,6 @@ package watcher
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -72,105 +71,68 @@ func (w *BTCWatcher) Close() {
 }
 
 // getNewTransactions gets new transactions from the Blockstream API
-func (w *BTCWatcher) getNewTransactions() {
-	latestBlockHeight, err := w.getLatestBlockHeight()
-	log.Println("Latest block height:", latestBlockHeight)
-	if err != nil {
-		log.Println("Error fetching latest block height:", err)
-		return
-	}
-	if latestBlockHeight > w.LastBlockHeight {
-		// Process missing blocks
-		// for height := w.LastBlockHeight + 1; height <= latestBlockHeight; height++ {
-		// 	block := w.getBlock(height)
-		// 	if block == nil {
-		// 		continue
-		// 	}
-		// 	log.Println("Processing block:", block.ID)
-		// }
-		w.LastBlockHeight = latestBlockHeight
-	}
-}
-
-// getLatestBlockHeight gets the latest block height
-func (w *BTCWatcher) getLatestBlockHeight() (int, error) {
-	resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/tip/height", w.BaseUrl))
-	if err != nil {
-		return 0, fmt.Errorf("error fetching latest block height: %v", err)
+func (w *BTCWatcher) getNewTransactions() error {
+	// Get the latest blocks at the current height + 1
+	blocks := w.getBlocks(w.LastBlockHeight + 1)
+	if blocks == nil {
+		return fmt.Errorf("error fetching blocks")
 	}
 
-	var height int
-	if err := json.Unmarshal(resp.Body(), &height); err != nil {
-		return 0, fmt.Errorf("error decoding JSON: %v", err)
+	// Update the last block height
+	latestBlockHeight := blocks[len(blocks)-1].Height
+	w.updateLastBlockHeight(latestBlockHeight)
+
+	// Get transactions from the latest blocks
+	var transactions []*Transaction
+	for _, block := range blocks {
+		txs := w.getTransactionsFromBlock(block)
+		transactions = append(transactions, txs...)
 	}
 
-	return height, nil
+	return nil
 }
 
 // getBlock gets the block at the given height
-func (w *BTCWatcher) getBlock(height int) *Block {
-	resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%d", w.BaseUrl, height))
+func (w *BTCWatcher) getBlocks(start_height int) []*Block {
+	// Get the block at the given height
+	resp, err := w.Client.R().Get(fmt.Sprintf("%s/blocks/%d", w.BaseUrl, start_height))
 	if err != nil {
-		log.Println("Error fetching block:", err)
 		return nil
 	}
 
-	var block Block
-	if err := json.Unmarshal(resp.Body(), &block); err != nil {
-		log.Println("Error decoding JSON:", err)
+	// Parse the response
+	var blocks []*Block
+	if err := json.Unmarshal(resp.Body(), &blocks); err != nil {
 		return nil
 	}
 
-	return &block
+	return blocks
 }
 
-// // WatchTransactions polls the Blockstream API for new transactions
-// func (w *BTCWatcher) WatchTransactions() {
-// 	log.Println("Watching BTC address:", w.Config.Address)
+// updateLastBlockHeight updates the last block height
+func (w *BTCWatcher) updateLastBlockHeight(height int) {
+	w.LastBlockHeight = height
+}
 
-// 	for {
-// 		// Get transactions for the address
-// 		resp, err := w.Client.R().Get(fmt.Sprintf("/address/%s/txs", w.Config.Address))
-// 		if err != nil {
-// 			log.Println("Error fetching transactions:", err)
-// 			time.Sleep(10 * time.Second)
-// 			continue
-// 		}
+// getTransactionsFromBlock gets transactions from the given block
+func (w *BTCWatcher) getTransactionsFromBlock(block *Block) []*Transaction {
+	var transactions []*Transaction
+	txCount := block.TxCount
+	for i := 0; i < txCount; i += 25 {
+		// Get transactions for the block
+		resp, err := w.Client.R().Get(fmt.Sprintf("%s/block/%s", w.BaseUrl, block.ID))
+		if err != nil {
+			return nil
+		}
 
-// 		// Parse the response
-// 		var txs []Transaction
-// 		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
-// 			log.Println("Error decoding JSON:", err)
-// 			return
-// 		}
+		// Parse the response
+		var txs []*Transaction
+		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
+			return nil
+		}
 
-// 		// Get the number of transactions
-// 		log.Println("Found", len(txs), "transactions")
+		transactions = append(transactions, txs...)
+	}
 
-// 		// Get the latest transaction
-// 		tx := txs[0]
-
-// 		// Print Transaction Details
-// 		log.Println("Transaction ID:", tx.TxID)
-// 		log.Println("Size:", tx.Size, "bytes")
-// 		log.Println("Fee:", tx.Fee, "satoshis")
-// 		log.Println("Confirmed:", tx.Status.Confirmed)
-// 		log.Println("Block Height:", tx.Status.BlockHeight)
-
-// 		// Print Inputs (vin)
-// 		log.Println("\n🔹 Inputs (vin):")
-// 		for _, vin := range tx.Vin {
-// 			log.Printf("- From: %s (Spent %.8f BTC)\n", vin.Prevout.Address, float64(vin.Prevout.Value)/1e8)
-// 		}
-
-// 		// Print Outputs (vout)
-// 		log.Println("\n🔹 Outputs (vout):")
-// 		for _, vout := range tx.Vout {
-// 			log.Printf("- To: %s (Received %.8f BTC)\n", vout.ScriptPubKeyAddress, float64(vout.Value)/1e8)
-// 		}
-
-// 		log.Println()
-
-// 		time.Sleep(10 * time.Second) // Poll every 10 sec
-// 	}
-// }
+	return transactions
+}
