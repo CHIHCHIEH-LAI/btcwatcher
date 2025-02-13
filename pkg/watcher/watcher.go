@@ -34,12 +34,12 @@ type BTCWatcher struct {
 }
 
 // NewBTCWatcher creates a new BTCWatcher instance
-func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequired int) *BTCWatcher {
+func NewBTCWatcher(network string, fromHeight int, watchedAddresses []string, blockConfirmedRequired int) *BTCWatcher {
 
 	w := &BTCWatcher{
 		client:                 resty.New(),
 		baseUrl:                getBaseUrl(network),
-		lastFetchedBlockHeight: 883549, // hardcoded for now
+		lastFetchedBlockHeight: fromHeight,
 		blockConfirmedRequired: blockConfirmedRequired,
 		heightChannel:          make(chan *model.HeightRange, 10),
 		blockChannel:           make(chan *model.Block, 10),
