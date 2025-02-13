@@ -61,6 +61,8 @@ func (w *BTCWatcher) setBaseUrl(network string) {
 
 // Run starts monitoring new blocks
 func (w *BTCWatcher) Run() {
+	log.Println("BTCWatcher is running")
+
 	go w.watchForNewBlock()
 	go w.collectTransactionsFromBlock()
 	go w.filterTransactionByWatchedAddresses()
@@ -246,4 +248,6 @@ func (w *BTCWatcher) Close() {
 	close(w.filteredTxChannel)
 	close(w.OutputChannel)
 	close(w.stopRunning)
+
+	log.Println("BTCWatcher is closed")
 }
