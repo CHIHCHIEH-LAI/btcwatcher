@@ -4,71 +4,88 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
+	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
 	"github.com/go-resty/resty/v2"
 )
 
 type BTCWatcher struct {
 	client                 *resty.Client
 	baseUrl                string
-	watchedAddresses       map[string]bool
 	lastFetchedBlockHeight int
 	blockConfirmedRequired int
-	blockChannel           chan *Block
-	txChannel              chan *Transaction
-	filteredTxChannel      chan *Transaction
-	OutputChannel          chan *Transaction
-	stopRunning            chan bool
+
+	heightChannel     chan *model.HeightRange
+	blockChannel      chan *model.Block
+	txRangeChannel    chan *model.TransactionRange
+	txChannel         chan *model.Transaction
+	filteredTxChannel chan *model.Transaction
+	OutputChannel     chan *model.Transaction
+
+	blockFetcher               *BlockFetcher
+	blockTransactionDispatcher *BlockTransactionDispatcher
+	transactionFetcher         *TransactionFetcher
+	transactionFilter          *TransactionFilter
+
+	wg          sync.WaitGroup
+	stopRunning chan struct{}
 }
 
 // NewBTCWatcher creates a new BTCWatcher instance
-func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequired int) *BTCWatcher {
-	btcwatcher := &BTCWatcher{
+func NewBTCWatcher(network string, fromHeight int, watchedAddresses []string, blockConfirmedRequired int) *BTCWatcher {
+
+	w := &BTCWatcher{
 		client:                 resty.New(),
-		lastFetchedBlockHeight: 883549, // hardcoded for now
+		baseUrl:                getBaseUrl(network),
+		lastFetchedBlockHeight: fromHeight,
 		blockConfirmedRequired: blockConfirmedRequired,
-		blockChannel:           make(chan *Block),
-		txChannel:              make(chan *Transaction),
-		filteredTxChannel:      make(chan *Transaction),
-		OutputChannel:          make(chan *Transaction),
-		stopRunning:            make(chan bool),
+		heightChannel:          make(chan *model.HeightRange, 10),
+		blockChannel:           make(chan *model.Block, 10),
+		txRangeChannel:         make(chan *model.TransactionRange, 10),
+		txChannel:              make(chan *model.Transaction, 100),
+		filteredTxChannel:      make(chan *model.Transaction, 100),
+		OutputChannel:          make(chan *model.Transaction, 10),
+		stopRunning:            make(chan struct{}),
 	}
 
-	btcwatcher.setBaseUrl(network)
-	btcwatcher.setWatchedAddresses(watchedAddresses)
+	w.blockFetcher = NewBlockFetcher(w.baseUrl, w.heightChannel, w.blockChannel, 10)
+	w.blockTransactionDispatcher = NewBlockTransactionDispatcher(w.blockChannel, w.txRangeChannel, 10)
+	w.transactionFetcher = NewTransactionFetcher(w.baseUrl, w.txRangeChannel, w.txChannel, 10)
+	w.transactionFilter = NewTransactionFilter(watchedAddresses, w.txChannel, w.filteredTxChannel, 10)
 
-	return btcwatcher
+	return w
 }
 
-// setWatchedAddresses sets the addresses to watch
-func (w *BTCWatcher) setWatchedAddresses(addresses []string) {
-	w.watchedAddresses = make(map[string]bool)
-	for _, addr := range addresses {
-		w.watchedAddresses[addr] = true
-	}
-}
-
-// setBaseUrl sets the base URL for the Blockstream API
-func (w *BTCWatcher) setBaseUrl(network string) {
+// getBaseUrl gets the base URL for the given network
+func getBaseUrl(network string) string {
 	baseURL := "https://blockstream.info/api"
 	if network == "testnet" {
 		baseURL = "https://blockstream.info/testnet/api"
 	}
 
-	w.baseUrl = baseURL
+	return baseURL
 }
 
 // Run starts monitoring new blocks
 func (w *BTCWatcher) Run() {
+	log.Println("BTCWatcher is running")
+
 	go w.watchForNewBlock()
-	go w.collectTransactionsFromBlock()
-	go w.filterTransactionByWatchedAddresses()
-	go w.outputTransaction()
+
+	go w.blockFetcher.Run()
+	go w.blockTransactionDispatcher.Run()
+	go w.transactionFetcher.Run()
+	go w.transactionFilter.Run()
+
+	go w.outputTransactions()
 }
 
 // collectNewBlock collects new block
 func (w *BTCWatcher) watchForNewBlock() {
+	w.wg.Add(1)
+	defer w.wg.Done()
 	for {
 		select {
 		case <-w.stopRunning:
@@ -85,137 +102,14 @@ func (w *BTCWatcher) fetchNewBlocks() {
 	// Get the latest confirmed block height
 	latestConfirmedBlockHeight := w.getLatestConfirmedBlockHeight()
 
-	if latestConfirmedBlockHeight <= w.lastFetchedBlockHeight {
-		return
-	}
-
-	blocks := w.fetchBlocks(w.lastFetchedBlockHeight+1, latestConfirmedBlockHeight)
-
-	// Send blocks to the channel
-	for _, block := range blocks {
-		w.blockChannel <- block
-	}
-
-	// Update the last block height
-	w.updatelastFetchedBlockHeight(latestConfirmedBlockHeight)
-}
-
-// fetchBlocks fetches blocks from the given start height to the end height
-func (w *BTCWatcher) fetchBlocks(start_height, end_height int) []*Block {
-	var blocks []*Block
-	for i := start_height; i <= end_height; i += 10 {
-		// Get the blocks starting from the given height
-		resp, err := w.fetchData(fmt.Sprintf("%s/blocks/%d", w.baseUrl, i))
-		if err != nil {
-			continue
+	for i := w.lastFetchedBlockHeight + 1; i <= latestConfirmedBlockHeight; i += 10 {
+		w.heightChannel <- &model.HeightRange{
+			StartHeight: i,
+			EndHeight:   min(i+10, latestConfirmedBlockHeight),
 		}
-
-		// Parse the response
-		var subBlocks []*Block
-		if err := json.Unmarshal(resp.Body(), &subBlocks); err != nil {
-			continue
-		}
-
-		blocks = append(blocks, subBlocks...)
+		// Update the last block height
+		w.updatelastFetchedBlockHeight(min(i+10, latestConfirmedBlockHeight))
 	}
-
-	// Trim the blocks
-	heightDiff := end_height - start_height
-	if len(blocks) > heightDiff {
-		blocks = blocks[:heightDiff+1]
-	}
-
-	return blocks
-}
-
-// updatelastFetchedBlockHeightupdates the last block height
-func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
-	w.lastFetchedBlockHeight = height
-}
-
-// collectTransactionsFromBlock collects transactions from the block
-func (w *BTCWatcher) collectTransactionsFromBlock() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case block := <-w.blockChannel:
-			log.Printf("Received block %s with %d transactions and %d height", block.ID, block.TxCount, block.Height)
-			w.fetchTransactionsFromBlock(block)
-		}
-	}
-}
-
-// fetchTransactionsFromBlock fetches transactions from the block
-func (w *BTCWatcher) fetchTransactionsFromBlock(block *Block) {
-	txCount := block.TxCount
-	for i := 0; i < txCount; i += 25 {
-		// Fetch 25 transactions beginning at index i
-		resp, err := w.fetchData(fmt.Sprintf("%s/block/%s/txs/%d", w.baseUrl, block.ID, i))
-		if err != nil {
-			continue
-		}
-
-		// Parse the response
-		var txs []*Transaction
-		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
-			continue
-		}
-
-		// Send transactions to the channel
-		for _, tx := range txs {
-			w.txChannel <- tx
-		}
-	}
-}
-
-// filterTransactionByWatchedAddresses filters transaction by watched addresses
-func (w *BTCWatcher) filterTransactionByWatchedAddresses() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case tx := <-w.txChannel:
-			for _, vout := range tx.Vout {
-				if w.watchedAddresses[vout.ScriptPubKeyAddress] {
-					w.filteredTxChannel <- tx
-					break
-				}
-			}
-		}
-	}
-}
-
-// outputTransaction outputs transaction
-func (w *BTCWatcher) outputTransaction() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case tx := <-w.filteredTxChannel:
-			log.Printf("Transaction %s is sent to the OutputChannel", tx.TxID)
-			w.OutputChannel <- tx
-		}
-	}
-}
-
-// fetchData fetches data from the given URL
-func (w *BTCWatcher) fetchData(url string) (*resty.Response, error) {
-	var err error
-	var resp *resty.Response
-	var maxRetries = 3
-	var retryDelay = 1 * time.Second
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		resp, err = w.client.R().Get(url)
-		if err == nil {
-			return resp, nil
-		}
-
-		time.Sleep(retryDelay)
-		retryDelay *= 2 // exponential backoff
-	}
-
-	return nil, err
 }
 
 // getLatestConfirmedBlockHeight gets the latest confirmed block height
@@ -238,12 +132,42 @@ func (w *BTCWatcher) getLatestBlockHeight() int {
 	return height
 }
 
+// updatelastFetchedBlockHeightupdates the last block height
+func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
+	w.lastFetchedBlockHeight = height
+}
+
+// outputTransactions outputs the transactions
+func (w *BTCWatcher) outputTransactions() {
+	w.wg.Add(1)
+	defer w.wg.Done()
+
+	for {
+		select {
+		case tx := <-w.filteredTxChannel:
+			w.OutputChannel <- tx
+		case <-w.stopRunning:
+			return
+		}
+	}
+}
+
 // Close closes the btcwatcher
 func (w *BTCWatcher) Close() {
-	w.stopRunning <- true
+	close(w.stopRunning)
+	w.wg.Wait()
+
+	w.blockFetcher.Close()
+	w.blockTransactionDispatcher.Close()
+	w.transactionFetcher.Close()
+	w.transactionFilter.Close()
+
+	close(w.heightChannel)
 	close(w.blockChannel)
+	close(w.txRangeChannel)
 	close(w.txChannel)
 	close(w.filteredTxChannel)
 	close(w.OutputChannel)
-	close(w.stopRunning)
+
+	log.Println("BTCWatcher is closed")
 }

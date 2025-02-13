@@ -1,4 +1,4 @@
-package watcher
+package model
 
 // Block represents a Bitcoin block
 type Block struct {
