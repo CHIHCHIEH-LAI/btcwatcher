@@ -26,6 +26,7 @@ type BTCWatcher struct {
 func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequired int) *BTCWatcher {
 	btcwatcher := &BTCWatcher{
 		client:                 resty.New(),
+		lastFetchedBlockHeight: 883549, // hardcoded for now
 		blockConfirmedRequired: blockConfirmedRequired,
 		blockChannel:           make(chan *Block),
 		txChannel:              make(chan *Transaction),
@@ -36,8 +37,6 @@ func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequ
 
 	btcwatcher.setBaseUrl(network)
 	btcwatcher.setWatchedAddresses(watchedAddresses)
-
-	btcwatcher.lastFetchedBlockHeight = 883549 // hardcoded for now
 
 	return btcwatcher
 }
