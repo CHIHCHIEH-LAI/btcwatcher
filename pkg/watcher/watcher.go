@@ -7,10 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/block_fetcher"
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
-	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/transaction_fetcher"
-	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/transaction_filter"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -26,9 +23,9 @@ type BTCWatcher struct {
 	filteredTxChannel chan *model.Transaction
 	OutputChannel     chan *model.Transaction
 
-	blockFetcher       *block_fetcher.BlockFetcher
-	transactionFetcher *transaction_fetcher.TransactionFetcher
-	transactionFilter  *transaction_filter.TransactionFilter
+	blockFetcher       *BlockFetcher
+	transactionFetcher *TransactionFetcher
+	transactionFilter  *TransactionFilter
 
 	wg          sync.WaitGroup
 	stopRunning chan bool
@@ -50,9 +47,9 @@ func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequ
 		stopRunning:            make(chan bool),
 	}
 
-	w.blockFetcher = block_fetcher.NewBlockFetcher(w.baseUrl, w.heightChannel, w.blockChannel, 10)
-	w.transactionFetcher = transaction_fetcher.NewTransactionFetcher(w.baseUrl, w.blockChannel, w.txChannel, 10)
-	w.transactionFilter = transaction_filter.NewTransactionFilter(watchedAddresses, w.txChannel, w.filteredTxChannel, 10)
+	w.blockFetcher = NewBlockFetcher(w.baseUrl, w.heightChannel, w.blockChannel, 10)
+	w.transactionFetcher = NewTransactionFetcher(w.baseUrl, w.blockChannel, w.txChannel, 10)
+	w.transactionFilter = NewTransactionFilter(watchedAddresses, w.txChannel, w.filteredTxChannel, 10)
 
 	return w
 }

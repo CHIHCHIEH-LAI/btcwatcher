@@ -1,4 +1,4 @@
-package block_fetcher
+package watcher
 
 import (
 	"encoding/json"

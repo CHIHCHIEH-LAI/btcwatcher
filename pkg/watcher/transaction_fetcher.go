@@ -1,4 +1,4 @@
-package transaction_fetcher
+package watcher
 
 import (
 	"encoding/json"

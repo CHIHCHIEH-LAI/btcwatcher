@@ -1,4 +1,4 @@
-package transaction_filter
+package watcher
 
 import (
 	"sync"
