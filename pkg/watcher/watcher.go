@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/block_fetcher"
@@ -19,15 +20,18 @@ type BTCWatcher struct {
 	lastFetchedBlockHeight int
 	blockConfirmedRequired int
 
-	heightChannel chan *model.HeightRange
-	blockChannel  chan *model.Block
-	txChannel     chan *model.Transaction
-	OutputChannel chan *model.Transaction
+	heightChannel     chan *model.HeightRange
+	blockChannel      chan *model.Block
+	txChannel         chan *model.Transaction
+	filteredTxChannel chan *model.Transaction
+	OutputChannel     chan *model.Transaction
 
 	blockFetcher       *block_fetcher.BlockFetcher
 	transactionFetcher *transaction_fetcher.TransactionFetcher
 	transactionFilter  *transaction_filter.TransactionFilter
-	stopRunning        chan bool
+
+	wg          sync.WaitGroup
+	stopRunning chan bool
 }
 
 // NewBTCWatcher creates a new BTCWatcher instance
@@ -41,13 +45,14 @@ func NewBTCWatcher(network string, watchedAddresses []string, blockConfirmedRequ
 		heightChannel:          make(chan *model.HeightRange, 10),
 		blockChannel:           make(chan *model.Block, 10),
 		txChannel:              make(chan *model.Transaction, 100),
+		filteredTxChannel:      make(chan *model.Transaction, 100),
 		OutputChannel:          make(chan *model.Transaction, 10),
 		stopRunning:            make(chan bool),
 	}
 
 	w.blockFetcher = block_fetcher.NewBlockFetcher(w.baseUrl, w.heightChannel, w.blockChannel, 10)
 	w.transactionFetcher = transaction_fetcher.NewTransactionFetcher(w.baseUrl, w.blockChannel, w.txChannel, 10)
-	w.transactionFilter = transaction_filter.NewTransactionFilter(watchedAddresses, w.txChannel, w.OutputChannel, 10)
+	w.transactionFilter = transaction_filter.NewTransactionFilter(watchedAddresses, w.txChannel, w.filteredTxChannel, 10)
 
 	return w
 }
@@ -66,14 +71,17 @@ func getBaseUrl(network string) string {
 func (w *BTCWatcher) Run() {
 	log.Println("BTCWatcher is running")
 
+	w.wg.Add(1)
 	go w.watchForNewBlock()
-	go w.blockFetcher.Run()
-	go w.transactionFetcher.Run()
-	go w.transactionFilter.Run()
+	go w.runBlockFetcher()
+	go w.runTransactionFetcher()
+	go w.runTransactionFilter()
+	go w.outputTransactions()
 }
 
 // collectNewBlock collects new block
 func (w *BTCWatcher) watchForNewBlock() {
+	defer w.wg.Done()
 	for {
 		select {
 		case <-w.stopRunning:
@@ -100,11 +108,6 @@ func (w *BTCWatcher) fetchNewBlocks() {
 	}
 }
 
-// updatelastFetchedBlockHeightupdates the last block height
-func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
-	w.lastFetchedBlockHeight = height
-}
-
 // getLatestConfirmedBlockHeight gets the latest confirmed block height
 func (w *BTCWatcher) getLatestConfirmedBlockHeight() int {
 	return w.getLatestBlockHeight() - w.blockConfirmedRequired
@@ -125,17 +128,53 @@ func (w *BTCWatcher) getLatestBlockHeight() int {
 	return height
 }
 
+// updatelastFetchedBlockHeightupdates the last block height
+func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
+	w.lastFetchedBlockHeight = height
+}
+
+// runBlockFetcher runs the block fetcher
+func (w *BTCWatcher) runBlockFetcher() {
+	go w.blockFetcher.Run()
+}
+
+// runTransactionFetcher runs the transaction fetcher
+func (w *BTCWatcher) runTransactionFetcher() {
+	go w.transactionFetcher.Run()
+}
+
+// runTransactionFilter runs the transaction filter
+func (w *BTCWatcher) runTransactionFilter() {
+	go w.transactionFilter.Run()
+}
+
+// outputTransactions outputs the transactions
+func (w *BTCWatcher) outputTransactions() {
+	for {
+		select {
+		case tx := <-w.filteredTxChannel:
+			w.OutputChannel <- tx
+		case <-w.stopRunning:
+			return
+		}
+	}
+}
+
 // Close closes the btcwatcher
 func (w *BTCWatcher) Close() {
+	w.stopRunning <- true
+	w.wg.Wait()
+
+	w.blockFetcher.Close()
 	w.transactionFetcher.Close()
 	w.transactionFilter.Close()
 
-	w.stopRunning <- true
+	close(w.stopRunning)
 	close(w.heightChannel)
 	close(w.blockChannel)
 	close(w.txChannel)
+	close(w.filteredTxChannel)
 	close(w.OutputChannel)
-	close(w.stopRunning)
 
 	log.Println("BTCWatcher is closed")
 }
