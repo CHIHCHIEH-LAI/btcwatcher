@@ -64,9 +64,9 @@ func (w *BTCWatcher) Run() {
 	log.Println("BTCWatcher is running")
 
 	go w.watchForNewBlock()
-	go w.collectTransactionsFromBlock()
-	go w.filterTransactionByWatchedAddresses()
-	go w.outputTransaction()
+	go w.runTransactionFetchingWorkers(5)  // 5 workers for transaction fetching
+	go w.runTransactionFilteringWorkers(3) // 3 workers for filtering
+	go w.runtTransactionOutputWorkers(2)   // 2 workers for output processing
 }
 
 // collectNewBlock collects new block
@@ -87,24 +87,20 @@ func (w *BTCWatcher) fetchNewBlocks() {
 	// Get the latest confirmed block height
 	latestConfirmedBlockHeight := w.getLatestConfirmedBlockHeight()
 
+	// If the latest confirmed block height is less than or equal to the last fetched block height, return
 	if latestConfirmedBlockHeight <= w.lastFetchedBlockHeight {
 		return
 	}
 
-	blocks := w.fetchBlocks(w.lastFetchedBlockHeight+1, latestConfirmedBlockHeight)
-
-	// Send blocks to the channel
-	for _, block := range blocks {
-		w.blockChannel <- block
-	}
+	// Fetch blocks from the last fetched block height to the latest confirmed block height
+	w.fetchBlocks(w.lastFetchedBlockHeight+1, latestConfirmedBlockHeight)
 
 	// Update the last block height
 	w.updatelastFetchedBlockHeight(latestConfirmedBlockHeight)
 }
 
 // fetchBlocks fetches blocks from the given start height to the end height
-func (w *BTCWatcher) fetchBlocks(start_height, end_height int) []*Block {
-	var blocks []*Block
+func (w *BTCWatcher) fetchBlocks(start_height, end_height int) {
 	for i := start_height; i <= end_height; i += 10 {
 		// Get the blocks starting from the given height
 		resp, err := w.fetchData(fmt.Sprintf("%s/blocks/%d", w.baseUrl, i))
@@ -118,16 +114,16 @@ func (w *BTCWatcher) fetchBlocks(start_height, end_height int) []*Block {
 			continue
 		}
 
-		blocks = append(blocks, subBlocks...)
-	}
+		// Trim the blocks
+		if end_height-i < 10 {
+			subBlocks = subBlocks[:end_height-i+1]
+		}
 
-	// Trim the blocks
-	heightDiff := end_height - start_height
-	if len(blocks) > heightDiff {
-		blocks = blocks[:heightDiff+1]
+		// Send blocks to the channel
+		for _, block := range subBlocks {
+			w.blockChannel <- block
+		}
 	}
-
-	return blocks
 }
 
 // updatelastFetchedBlockHeightupdates the last block height
@@ -135,16 +131,14 @@ func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
 	w.lastFetchedBlockHeight = height
 }
 
-// collectTransactionsFromBlock collects transactions from the block
-func (w *BTCWatcher) collectTransactionsFromBlock() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case block := <-w.blockChannel:
-			log.Printf("Received block %s with %d transactions and %d height", block.ID, block.TxCount, block.Height)
-			w.fetchTransactionsFromBlock(block)
-		}
+// runTransactionFilteringWorkers runs transaction fetching workers
+func (w *BTCWatcher) runTransactionFetchingWorkers(workerCount int) {
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for block := range w.blockChannel {
+				w.fetchTransactionsFromBlock(block)
+			}
+		}()
 	}
 }
 
@@ -171,33 +165,38 @@ func (w *BTCWatcher) fetchTransactionsFromBlock(block *Block) {
 	}
 }
 
-// filterTransactionByWatchedAddresses filters transaction by watched addresses
-func (w *BTCWatcher) filterTransactionByWatchedAddresses() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case tx := <-w.txChannel:
-			for _, vout := range tx.Vout {
-				if w.watchedAddresses[vout.ScriptPubKeyAddress] {
+// runTransactionFilteringWorkers runs transaction filtering workers
+func (w *BTCWatcher) runTransactionFilteringWorkers(workerCount int) {
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for tx := range w.txChannel {
+				if w.isTransactionWatched(tx) {
 					w.filteredTxChannel <- tx
-					break
 				}
 			}
-		}
+		}()
 	}
 }
 
-// outputTransaction outputs transaction
-func (w *BTCWatcher) outputTransaction() {
-	for {
-		select {
-		case <-w.stopRunning:
-			return
-		case tx := <-w.filteredTxChannel:
-			log.Printf("Transaction %s is sent to the OutputChannel", tx.TxID)
-			w.OutputChannel <- tx
+// isTransactionWatched checks if the transaction is watched
+func (w *BTCWatcher) isTransactionWatched(tx *Transaction) bool {
+	for _, vout := range tx.Vout {
+		if w.watchedAddresses[vout.ScriptPubKeyAddress] {
+			return true
 		}
+	}
+
+	return false
+}
+
+// runtTransactionOutputWorkers runs transaction output workers
+func (w *BTCWatcher) runtTransactionOutputWorkers(workerCount int) {
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for tx := range w.filteredTxChannel {
+				w.OutputChannel <- tx
+			}
+		}()
 	}
 }
 
