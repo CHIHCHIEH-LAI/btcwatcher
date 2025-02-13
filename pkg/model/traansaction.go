@@ -1,4 +1,4 @@
-package watcher
+package model
 
 type Transaction struct {
 	TxID     string `json:"txid"`
