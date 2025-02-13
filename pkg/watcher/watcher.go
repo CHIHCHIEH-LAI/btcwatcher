@@ -66,7 +66,7 @@ func (w *BTCWatcher) Run() {
 	go w.watchForNewBlock()
 	go w.runTransactionFetchingWorkers(5)  // 5 workers for transaction fetching
 	go w.runTransactionFilteringWorkers(3) // 3 workers for filtering
-	go w.runtTransactionOutputWorkers(2)   // 2 workers for output processing
+	go w.runTransactionOutputWorkers(2)    // 2 workers for output processing
 }
 
 // collectNewBlock collects new block
@@ -189,8 +189,8 @@ func (w *BTCWatcher) isTransactionWatched(tx *Transaction) bool {
 	return false
 }
 
-// runtTransactionOutputWorkers runs transaction output workers
-func (w *BTCWatcher) runtTransactionOutputWorkers(workerCount int) {
+// runTransactionOutputWorkers runs transaction output workers
+func (w *BTCWatcher) runTransactionOutputWorkers(workerCount int) {
 	for i := 0; i < workerCount; i++ {
 		go func() {
 			for tx := range w.filteredTxChannel {
