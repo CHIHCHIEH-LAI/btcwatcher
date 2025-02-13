@@ -10,29 +10,29 @@ import (
 )
 
 type TransactionFetcher struct {
-	client       *resty.Client
-	baseUrl      string
-	blockChannel chan *model.Block
-	txChannel    chan *model.Transaction
-	nWorkers     int
-	wg           sync.WaitGroup
-	stopRunning  chan bool
+	client         *resty.Client
+	baseUrl        string
+	txRangeChannel chan *model.TransactionRange
+	txChannel      chan *model.Transaction
+	nWorkers       int
+	wg             sync.WaitGroup
+	stopRunning    chan struct{}
 }
 
 // NewTransactionFetcher creates a new TransactionFetcher instance
 func NewTransactionFetcher(
 	baseUrl string,
-	blockChannel chan *model.Block,
+	txRangeChannel chan *model.TransactionRange,
 	txChannel chan *model.Transaction,
 	nWorkers int,
 ) *TransactionFetcher {
 	tf := &TransactionFetcher{
-		client:       resty.New(),
-		baseUrl:      baseUrl,
-		blockChannel: blockChannel,
-		txChannel:    txChannel,
-		nWorkers:     nWorkers,
-		stopRunning:  make(chan bool),
+		client:         resty.New(),
+		baseUrl:        baseUrl,
+		txRangeChannel: txRangeChannel,
+		txChannel:      txChannel,
+		nWorkers:       nWorkers,
+		stopRunning:    make(chan struct{}),
 	}
 
 	return tf
@@ -52,8 +52,8 @@ func (tf *TransactionFetcher) runWorker() {
 
 	for {
 		select {
-		case block := <-tf.blockChannel:
-			tf.fetchTransactions(block)
+		case txRange := <-tf.txRangeChannel:
+			tf.fetchTransactions(txRange)
 		case <-tf.stopRunning:
 			return
 		}
@@ -61,25 +61,29 @@ func (tf *TransactionFetcher) runWorker() {
 }
 
 // fetchTransactions fetches transactions for a given block
-func (tf *TransactionFetcher) fetchTransactions(block *model.Block) {
-	txCount := block.TxCount
-	for i := 0; i < txCount; i += 25 {
-		// Fetch 25 transactions beginning at index i
-		resp, err := tf.client.R().Get(fmt.Sprintf("%s/block/%s/txs/%d", tf.baseUrl, block.ID, i))
-		if err != nil {
-			continue
-		}
+func (tf *TransactionFetcher) fetchTransactions(txRange *model.TransactionRange) {
+	blockHash := txRange.BlockHash
+	startIdx := txRange.StartIdx
+	endIdx := txRange.EndIdx
+	resp, err := tf.client.R().Get(fmt.Sprintf("%s/block/%s/txs/%d", tf.baseUrl, blockHash, startIdx))
+	if err != nil {
+		return
+	}
 
-		// Parse the response
-		var txs []*model.Transaction
-		if err := json.Unmarshal(resp.Body(), &txs); err != nil {
-			continue
-		}
+	// Parse the response
+	var txs []*model.Transaction
+	if err := json.Unmarshal(resp.Body(), &txs); err != nil {
+		return
+	}
 
-		// Send transactions to the channel
-		for _, tx := range txs {
-			tf.txChannel <- tx
-		}
+	// Trim the transactions
+	if endIdx < len(txs) {
+		txs = txs[:endIdx]
+	}
+
+	// Send transactions to the channel
+	for _, tx := range txs {
+		tf.txChannel <- tx
 	}
 }
 
