@@ -3,6 +3,7 @@ package watcher
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
@@ -16,7 +17,7 @@ type BlockFetcher struct {
 	blockChannel  chan *model.Block
 	nworkers      int
 	wg            sync.WaitGroup
-	stopRunning   chan bool
+	stopRunning   chan struct{}
 }
 
 // NewBlockFetcher creates a new BlockFetcher instance
@@ -33,7 +34,7 @@ func NewBlockFetcher(
 		heightChannel: heightChannel,
 		blockChannel:  blockChannel,
 		nworkers:      nworkers,
-		stopRunning:   make(chan bool),
+		stopRunning:   make(chan struct{}),
 	}
 
 	return bf
@@ -54,6 +55,7 @@ func (bf *BlockFetcher) runWorker() {
 	for {
 		select {
 		case heightRange := <-bf.heightChannel:
+			log.Printf("Fetching blocks for height range: %d-%d", heightRange.StartHeight, heightRange.EndHeight)
 			bf.fetchBlocks(heightRange)
 		case <-bf.stopRunning:
 			return
