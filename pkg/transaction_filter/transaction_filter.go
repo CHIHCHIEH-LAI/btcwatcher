@@ -56,12 +56,17 @@ func (tf *TransactionFilter) runWorker() {
 	for {
 		select {
 		case tx := <-tf.txChannel:
-			if tf.isTransactionWatched(tx) {
-				tf.filteredTxChannel <- tx
-			}
+			tf.filterTransaction(tx)
 		case <-tf.stopRunning:
 			return
 		}
+	}
+}
+
+// filterTransaction filters transaction
+func (tf *TransactionFilter) filterTransaction(tx *model.Transaction) {
+	if tf.isTransactionWatched(tx) {
+		tf.filteredTxChannel <- tx
 	}
 }
 
