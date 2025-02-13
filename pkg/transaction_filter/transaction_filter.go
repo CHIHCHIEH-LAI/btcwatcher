@@ -46,12 +46,11 @@ func (tf *TransactionFilter) setWatchedAddresses(addresses []string) {
 func (tf *TransactionFilter) Run() {
 	tf.wg.Add(tf.nWorkers)
 	for i := 0; i < tf.nWorkers; i++ {
-		go tf.filterTxs()
+		go tf.runWorker()
 	}
 }
 
-// filterTxs filters transactions
-func (tf *TransactionFilter) filterTxs() {
+func (tf *TransactionFilter) runWorker() {
 	defer tf.wg.Done()
 
 	for {
