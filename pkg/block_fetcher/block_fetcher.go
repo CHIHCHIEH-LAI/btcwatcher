@@ -41,7 +41,6 @@ func NewBlockFetcher(
 
 // Run runs the block fetcher
 func (bf *BlockFetcher) Run() {
-	bf.wg.Add(bf.nworkers)
 	for i := 0; i < bf.nworkers; i++ {
 		go bf.runWorker()
 	}
@@ -49,6 +48,7 @@ func (bf *BlockFetcher) Run() {
 
 // runWorker runs a worker that fetches blocks
 func (bf *BlockFetcher) runWorker() {
+	bf.wg.Add(1)
 	defer bf.wg.Done()
 
 	for {
