@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/watcher"
@@ -36,11 +35,12 @@ func main() {
 
 	// Receive new transactions from the channel
 	for tx := range btcWatcher.OutputChannel {
-		txData, err := json.MarshalIndent(*tx, "", "  ")
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		log.Println(string(txData))
+		// txData, err := json.MarshalIndent(*tx, "", "  ")
+		// if err != nil {
+		// 	log.Println(err)
+		// 	continue
+		// }
+		// log.Println(string(txData))
+		log.Printf("New transaction on block with height %d: %s\n", tx.Status.BlockHeight, tx.TxID)
 	}
 }
