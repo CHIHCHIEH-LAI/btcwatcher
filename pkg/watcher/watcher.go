@@ -3,6 +3,7 @@ package watcher
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -89,6 +90,8 @@ func (w *BTCWatcher) fetchNewBlocks() {
 
 	blocks := w.fetchBlocks(w.lastBlockHeight+1, latestBlockHeight)
 
+	log.Printf("Fetched %d blocks from %d to %d", len(blocks), w.lastBlockHeight+1, latestBlockHeight)
+
 	// Send blocks to the channel
 	for _, block := range blocks {
 		w.blockChannel <- block
@@ -148,7 +151,7 @@ func (w *BTCWatcher) fetchTransactionsFromBlock(block *Block) {
 	txCount := block.TxCount
 	for i := 0; i < txCount; i += 25 {
 		// Fetch 25 transactions beginning at index i
-		resp, err := w.client.R().Get(fmt.Sprintf("%s/block/%s/txs/%s", w.baseUrl, block.ID, i))
+		resp, err := w.client.R().Get(fmt.Sprintf("%s/block/%s/txs/%d", w.baseUrl, block.ID, i))
 		if err != nil {
 			continue
 		}
@@ -164,6 +167,8 @@ func (w *BTCWatcher) fetchTransactionsFromBlock(block *Block) {
 			w.txChannel <- tx
 		}
 	}
+
+	log.Printf("Fetched %d transactions from block %s", txCount, block.ID)
 }
 
 // filterTransactionByWatchedAddresses filters transaction by watched addresses
@@ -176,6 +181,7 @@ func (w *BTCWatcher) filterTransactionByWatchedAddresses() {
 			for _, vout := range tx.Vout {
 				if w.watchedAddresses[vout.ScriptPubKeyAddress] {
 					w.filteredTxChannel <- tx
+					log.Printf("Transaction %s is sent to the filteredTxChannel", tx.TxID)
 					break
 				}
 			}
@@ -191,6 +197,7 @@ func (w *BTCWatcher) outputTransaction() {
 			return
 		case tx := <-w.filteredTxChannel:
 			w.OutputChannel <- tx
+			log.Printf("Transaction %s is sent to the OutputChannel", tx.TxID)
 		}
 	}
 }
