@@ -106,7 +106,7 @@ func (w *BTCWatcher) fetchBlocks(start_height, end_height int) []*Block {
 	var blocks []*Block
 	for i := start_height; i <= end_height; i += 10 {
 		// Get the blocks starting from the given height
-		resp, err := w.client.R().Get(fmt.Sprintf("%s/blocks/%d", w.baseUrl, start_height))
+		resp, err := w.fetchData(fmt.Sprintf("%s/blocks/%d", w.baseUrl, i))
 		if err != nil {
 			continue
 		}
@@ -152,7 +152,7 @@ func (w *BTCWatcher) fetchTransactionsFromBlock(block *Block) {
 	txCount := block.TxCount
 	for i := 0; i < txCount; i += 25 {
 		// Fetch 25 transactions beginning at index i
-		resp, err := w.client.R().Get(fmt.Sprintf("%s/block/%s/txs/%d", w.baseUrl, block.ID, i))
+		resp, err := w.fetchData(fmt.Sprintf("%s/block/%s/txs/%d", w.baseUrl, block.ID, i))
 		if err != nil {
 			continue
 		}
@@ -198,6 +198,25 @@ func (w *BTCWatcher) outputTransaction() {
 			w.OutputChannel <- tx
 		}
 	}
+}
+
+// fetchData fetches data from the given URL
+func (w *BTCWatcher) fetchData(url string) (*resty.Response, error) {
+	var err error
+	var resp *resty.Response
+	var maxRetries = 3
+	var retryDelay = 1 * time.Second
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err = w.client.R().Get(url)
+		if err == nil {
+			return resp, nil
+		}
+
+		time.Sleep(retryDelay)
+		retryDelay *= 2 // exponential backoff
+	}
+
+	return nil, err
 }
 
 // getLatestConfirmedBlockHeight gets the latest confirmed block height
