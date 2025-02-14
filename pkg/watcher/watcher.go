@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
@@ -29,7 +28,6 @@ type BTCWatcher struct {
 	transactionFetcher         *TransactionFetcher
 	transactionFilter          *TransactionFilter
 
-	wg          sync.WaitGroup
 	stopRunning chan struct{}
 }
 
@@ -79,13 +77,12 @@ func (w *BTCWatcher) Run() {
 	go w.transactionFetcher.Run()
 	go w.transactionFilter.Run()
 
-	go w.outputTransactions()
+	go w.outputTransaction()
 }
 
 // collectNewBlock collects new block
 func (w *BTCWatcher) watchForNewBlock() {
-	w.wg.Add(1)
-	defer w.wg.Done()
+
 	for {
 		select {
 		case <-w.stopRunning:
@@ -132,35 +129,21 @@ func (w *BTCWatcher) getLatestBlockHeight() int {
 	return height
 }
 
+// outputTransaction outputs the transaction
+func (w *BTCWatcher) outputTransaction() {
+	for tx := range w.filteredTxChannel {
+		w.OutputChannel <- tx
+	}
+}
+
 // updatelastFetchedBlockHeightupdates the last block height
 func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
 	w.lastFetchedBlockHeight = height
 }
 
-// outputTransactions outputs the transactions
-func (w *BTCWatcher) outputTransactions() {
-	w.wg.Add(1)
-	defer w.wg.Done()
-
-	for {
-		select {
-		case tx := <-w.filteredTxChannel:
-			w.OutputChannel <- tx
-		case <-w.stopRunning:
-			return
-		}
-	}
-}
-
 // Close closes the btcwatcher
 func (w *BTCWatcher) Close() {
 	close(w.stopRunning)
-	w.wg.Wait()
-
-	w.blockFetcher.Close()
-	w.blockTransactionDispatcher.Close()
-	w.transactionFetcher.Close()
-	w.transactionFilter.Close()
 
 	close(w.heightChannel)
 	close(w.blockChannel)

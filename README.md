@@ -1,4 +1,4 @@
-# BTC Watcher
+# Stream-Based BTC Watcher
 
 ## Resources
 - [Esplora HTTP API](https://github.com/blockstream/esplora/blob/master/API.md)

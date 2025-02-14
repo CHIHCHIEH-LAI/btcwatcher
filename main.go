@@ -9,7 +9,7 @@ import (
 func main() {
 	network := "mainnet"
 
-	fromHeight := 880000
+	fromHeight := 882000
 
 	// addresses
 	addresses := []string{

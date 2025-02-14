@@ -3,7 +3,6 @@ package watcher
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
 	"github.com/go-resty/resty/v2"
@@ -15,8 +14,6 @@ type TransactionFetcher struct {
 	txRangeChannel chan *model.TransactionRange
 	txChannel      chan *model.Transaction
 	nWorkers       int
-	wg             sync.WaitGroup
-	stopRunning    chan struct{}
 }
 
 // NewTransactionFetcher creates a new TransactionFetcher instance
@@ -32,7 +29,6 @@ func NewTransactionFetcher(
 		txRangeChannel: txRangeChannel,
 		txChannel:      txChannel,
 		nWorkers:       nWorkers,
-		stopRunning:    make(chan struct{}),
 	}
 
 	return tf
@@ -40,23 +36,15 @@ func NewTransactionFetcher(
 
 // Run runs the transaction fetcher
 func (tf *TransactionFetcher) Run() {
-	for i := 0; i < tf.nWorkers; i++ {
-		go tf.runWorker()
-	}
-}
+	workerPool := make(chan struct{}, tf.nWorkers) // Worker pool
 
-// runWorker runs a worker that fetches transactions
-func (tf *TransactionFetcher) runWorker() {
-	tf.wg.Add(1)
-	defer tf.wg.Done()
-
-	for {
-		select {
-		case txRange := <-tf.txRangeChannel:
+	for txRange := range tf.txRangeChannel {
+		workerPool <- struct{}{} // Acquire a worker
+		go func(txRange *model.TransactionRange) {
+			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Fetching transactions for block: %s, range: %d-%d", txRange.BlockHash, txRange.StartIdx, txRange.EndIdx)
 			tf.fetchTransactions(txRange)
-		case <-tf.stopRunning:
-			return
-		}
+		}(txRange)
 	}
 }
 
@@ -85,10 +73,4 @@ func (tf *TransactionFetcher) fetchTransactions(txRange *model.TransactionRange)
 	for _, tx := range txs {
 		tf.txChannel <- tx
 	}
-}
-
-// Close closes the transaction fetcher
-func (tf *TransactionFetcher) Close() {
-	close(tf.stopRunning)
-	tf.wg.Wait()
 }

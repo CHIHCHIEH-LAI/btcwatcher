@@ -1,8 +1,6 @@
 package watcher
 
 import (
-	"sync"
-
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
 )
 
@@ -11,8 +9,6 @@ type TransactionFilter struct {
 	txChannel         chan *model.Transaction
 	filteredTxChannel chan *model.Transaction
 	nWorkers          int
-	wg                sync.WaitGroup
-	stopRunning       chan struct{}
 }
 
 // NewTransactionFilter creates a new TransactionFilter instance
@@ -26,7 +22,6 @@ func NewTransactionFilter(
 		txChannel:         txChannel,
 		filteredTxChannel: filteredTxChannel,
 		nWorkers:          nWorkers,
-		stopRunning:       make(chan struct{}),
 	}
 
 	tf.setWatchedAddresses(watchedAddresses)
@@ -44,22 +39,15 @@ func (tf *TransactionFilter) setWatchedAddresses(addresses []string) {
 
 // Run runs the transaction filter
 func (tf *TransactionFilter) Run() {
-	for i := 0; i < tf.nWorkers; i++ {
-		go tf.runWorker()
-	}
-}
+	workerPool := make(chan struct{}, tf.nWorkers)
 
-func (tf *TransactionFilter) runWorker() {
-	tf.wg.Add(1)
-	defer tf.wg.Done()
-
-	for {
-		select {
-		case tx := <-tf.txChannel:
+	for tx := range tf.txChannel {
+		workerPool <- struct{}{} // Acquire a worker
+		go func(tx *model.Transaction) {
+			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Filtering transaction: %s", tx.TxID)
 			tf.filterTransaction(tx)
-		case <-tf.stopRunning:
-			return
-		}
+		}(tx)
 	}
 }
 
@@ -79,10 +67,4 @@ func (tf *TransactionFilter) isTransactionWatched(tx *model.Transaction) bool {
 	}
 
 	return false
-}
-
-// Close closes the transaction filter
-func (tf *TransactionFilter) Close() {
-	close(tf.stopRunning)
-	tf.wg.Wait()
 }
