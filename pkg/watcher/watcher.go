@@ -139,16 +139,14 @@ func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
 
 // outputTransactions outputs the transactions
 func (w *BTCWatcher) outputTransactions() {
-	w.wg.Add(1)
-	defer w.wg.Done()
+	workerPool := make(chan struct{}, 10)
 
-	for {
-		select {
-		case tx := <-w.filteredTxChannel:
+	for tx := range w.filteredTxChannel {
+		workerPool <- struct{}{} // Axquire a worker
+		go func(tx *model.Transaction) {
+			defer func() { <-workerPool }() // Release the worker
 			w.OutputChannel <- tx
-		case <-w.stopRunning:
-			return
-		}
+		}(tx)
 	}
 }
 
@@ -156,11 +154,6 @@ func (w *BTCWatcher) outputTransactions() {
 func (w *BTCWatcher) Close() {
 	close(w.stopRunning)
 	w.wg.Wait()
-
-	w.blockFetcher.Close()
-	w.blockTransactionDispatcher.Close()
-	w.transactionFetcher.Close()
-	w.transactionFilter.Close()
 
 	close(w.heightChannel)
 	close(w.blockChannel)
