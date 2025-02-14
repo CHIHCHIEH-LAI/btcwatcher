@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
@@ -17,18 +16,18 @@ type BTCWatcher struct {
 	lastFetchedBlockHeight int
 	blockConfirmedRequired int
 
-	heightChannel  chan *model.HeightRange
-	blockChannel   chan *model.Block
-	txRangeChannel chan *model.TransactionRange
-	txChannel      chan *model.Transaction
-	OutputChannel  chan *model.Transaction
+	heightChannel     chan *model.HeightRange
+	blockChannel      chan *model.Block
+	txRangeChannel    chan *model.TransactionRange
+	txChannel         chan *model.Transaction
+	filteredTxChannel chan *model.Transaction
+	OutputChannel     chan *model.Transaction
 
 	blockFetcher               *BlockFetcher
 	blockTransactionDispatcher *BlockTransactionDispatcher
 	transactionFetcher         *TransactionFetcher
 	transactionFilter          *TransactionFilter
 
-	wg          sync.WaitGroup
 	stopRunning chan struct{}
 }
 
@@ -44,6 +43,7 @@ func NewBTCWatcher(network string, fromHeight int, watchedAddresses []string, bl
 		blockChannel:           make(chan *model.Block, 10),
 		txRangeChannel:         make(chan *model.TransactionRange, 10),
 		txChannel:              make(chan *model.Transaction, 100),
+		filteredTxChannel:      make(chan *model.Transaction, 100),
 		OutputChannel:          make(chan *model.Transaction, 10),
 		stopRunning:            make(chan struct{}),
 	}
@@ -51,7 +51,7 @@ func NewBTCWatcher(network string, fromHeight int, watchedAddresses []string, bl
 	w.blockFetcher = NewBlockFetcher(w.baseUrl, w.heightChannel, w.blockChannel, 10)
 	w.blockTransactionDispatcher = NewBlockTransactionDispatcher(w.blockChannel, w.txRangeChannel, 10)
 	w.transactionFetcher = NewTransactionFetcher(w.baseUrl, w.txRangeChannel, w.txChannel, 50)
-	w.transactionFilter = NewTransactionFilter(watchedAddresses, w.txChannel, w.OutputChannel, 50)
+	w.transactionFilter = NewTransactionFilter(watchedAddresses, w.txChannel, w.filteredTxChannel, 50)
 
 	return w
 }
@@ -70,37 +70,19 @@ func getBaseUrl(network string) string {
 func (w *BTCWatcher) Run() {
 	log.Println("BTCWatcher is running")
 
-	w.wg.Add(5)
+	go w.watchForNewBlock()
 
-	go func() {
-		defer w.wg.Done()
-		w.watchForNewBlock()
-	}()
+	go w.blockFetcher.Run()
+	go w.blockTransactionDispatcher.Run()
+	go w.transactionFetcher.Run()
+	go w.transactionFilter.Run()
 
-	go func() {
-		defer w.wg.Done()
-		w.blockFetcher.Run()
-	}()
-
-	go func() {
-		defer w.wg.Done()
-		w.blockTransactionDispatcher.Run()
-	}()
-
-	go func() {
-		defer w.wg.Done()
-		w.transactionFetcher.Run()
-	}()
-
-	go func() {
-		defer w.wg.Done()
-		w.transactionFilter.Run()
-	}()
+	go w.outputTransaction()
 }
 
 // collectNewBlock collects new block
 func (w *BTCWatcher) watchForNewBlock() {
-	defer w.wg.Done()
+
 	for {
 		select {
 		case <-w.stopRunning:
@@ -147,6 +129,13 @@ func (w *BTCWatcher) getLatestBlockHeight() int {
 	return height
 }
 
+// outputTransaction outputs the transaction
+func (w *BTCWatcher) outputTransaction() {
+	for tx := range w.filteredTxChannel {
+		w.OutputChannel <- tx
+	}
+}
+
 // updatelastFetchedBlockHeightupdates the last block height
 func (w *BTCWatcher) updatelastFetchedBlockHeight(height int) {
 	w.lastFetchedBlockHeight = height
@@ -160,9 +149,8 @@ func (w *BTCWatcher) Close() {
 	close(w.blockChannel)
 	close(w.txRangeChannel)
 	close(w.txChannel)
+	close(w.filteredTxChannel)
 	close(w.OutputChannel)
-
-	w.wg.Wait()
 
 	log.Println("BTCWatcher is closed")
 }
