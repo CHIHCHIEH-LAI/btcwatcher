@@ -44,6 +44,8 @@ func (tf *TransactionFilter) Run() {
 	for tx := range tf.txChannel {
 		workerPool <- struct{}{} // Acquire a worker
 		go func(tx *model.Transaction) {
+			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Filtering transaction: %s", tx.TxID)
 			tf.filterTransaction(tx)
 		}(tx)
 	}

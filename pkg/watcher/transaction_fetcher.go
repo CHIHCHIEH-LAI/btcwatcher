@@ -41,6 +41,8 @@ func (tf *TransactionFetcher) Run() {
 	for txRange := range tf.txRangeChannel {
 		workerPool <- struct{}{} // Acquire a worker
 		go func(txRange *model.TransactionRange) {
+			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Fetching transactions for block: %s, range: %d-%d", txRange.BlockHash, txRange.StartIdx, txRange.EndIdx)
 			tf.fetchTransactions(txRange)
 		}(txRange)
 	}

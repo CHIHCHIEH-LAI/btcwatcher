@@ -33,6 +33,7 @@ func (btd *BlockTransactionDispatcher) Run() {
 		workerPool <- struct{}{} // Acquire a worker
 		go func(block *model.Block) {
 			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Dispatching transactions for block: %s", block.ID)
 			btd.dispatchBlockTransactions(block)
 		}(block)
 	}
