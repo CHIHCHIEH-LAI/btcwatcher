@@ -1,8 +1,6 @@
 package watcher
 
 import (
-	"sync"
-
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
 )
 
@@ -10,8 +8,6 @@ type BlockTransactionDispatcher struct {
 	blockChannel   chan *model.Block
 	txRangeChannel chan *model.TransactionRange
 	nWorkers       int
-	wg             sync.WaitGroup
-	stopRunning    chan struct{}
 }
 
 // NewBlockTransactionDispatcher creates a new BlockTransactionDispatcher instance
@@ -24,7 +20,6 @@ func NewBlockTransactionDispatcher(
 		blockChannel:   blockChannel,
 		txRangeChannel: txRangeChannel,
 		nWorkers:       nWorkers,
-		stopRunning:    make(chan struct{}),
 	}
 
 	return btd
@@ -32,23 +27,15 @@ func NewBlockTransactionDispatcher(
 
 // Run runs the block transaction dispatcher
 func (btd *BlockTransactionDispatcher) Run() {
-	for i := 0; i < btd.nWorkers; i++ {
-		btd.wg.Add(1)
-		go btd.runWorker()
-	}
-}
-
-// runWorker runs a worker that dispatches block transactions
-func (btd *BlockTransactionDispatcher) runWorker() {
-	defer btd.wg.Done()
+	workerPool := make(chan struct{}, btd.nWorkers) // Worker pool
 
 	for block := range btd.blockChannel {
-		select {
-		case <-btd.stopRunning:
-			return
-		default:
+		workerPool <- struct{}{} // Acquire a worker
+		go func(block *model.Block) {
+			defer func() { <-workerPool }() // Release the worker
+			// log.Printf("Dispatching transactions for block: %s", block.ID)
 			btd.dispatchBlockTransactions(block)
-		}
+		}(block)
 	}
 }
 
@@ -63,10 +50,4 @@ func (btd *BlockTransactionDispatcher) dispatchBlockTransactions(block *model.Bl
 			EndIdx:    i + 25,
 		}
 	}
-}
-
-// Close closes the block transaction dispatcher
-func (btd *BlockTransactionDispatcher) Close() {
-	close(btd.stopRunning)
-	btd.wg.Wait()
 }

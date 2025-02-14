@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 
 	"github.com/CHIHCHIEH-LAI/btcwatcher/pkg/model"
 	"github.com/go-resty/resty/v2"
@@ -15,9 +14,7 @@ type BlockFetcher struct {
 	baseUrl       string
 	heightChannel chan *model.HeightRange
 	blockChannel  chan *model.Block
-	nworkers      int
-	wg            sync.WaitGroup
-	stopRunning   chan struct{}
+	nWorkers      int
 }
 
 // NewBlockFetcher creates a new BlockFetcher instance
@@ -25,7 +22,7 @@ func NewBlockFetcher(
 	baseUrl string,
 	heightChannel chan *model.HeightRange,
 	blockChannel chan *model.Block,
-	nworkers int,
+	nWorkers int,
 ) *BlockFetcher {
 
 	bf := &BlockFetcher{
@@ -33,8 +30,7 @@ func NewBlockFetcher(
 		baseUrl:       baseUrl,
 		heightChannel: heightChannel,
 		blockChannel:  blockChannel,
-		nworkers:      nworkers,
-		stopRunning:   make(chan struct{}),
+		nWorkers:      nWorkers,
 	}
 
 	return bf
@@ -42,24 +38,15 @@ func NewBlockFetcher(
 
 // Run runs the block fetcher
 func (bf *BlockFetcher) Run() {
-	for i := 0; i < bf.nworkers; i++ {
-		bf.wg.Add(1)
-		go bf.runWorker()
-	}
-}
-
-// runWorker runs a worker that fetches blocks
-func (bf *BlockFetcher) runWorker() {
-	defer bf.wg.Done()
+	workerPool := make(chan struct{}, bf.nWorkers) // Worker pool
 
 	for heightRange := range bf.heightChannel {
-		select {
-		case <-bf.stopRunning:
-			return
-		default:
-			log.Printf("Fetching blocks for height range: %d-%d", heightRange.StartHeight, heightRange.EndHeight)
-			bf.fetchBlocks(heightRange)
-		}
+		workerPool <- struct{}{} // Acquire a worker
+		go func(height *model.HeightRange) {
+			defer func() { <-workerPool }() // Release the worker
+			log.Printf("Fetching blocks for height range: %d-%d", height.StartHeight, height.EndHeight)
+			bf.fetchBlocks(height)
+		}(heightRange)
 	}
 }
 
@@ -88,10 +75,4 @@ func (bf *BlockFetcher) fetchBlocks(height *model.HeightRange) {
 			bf.blockChannel <- block
 		}
 	}
-}
-
-// Close closes the block fetcher
-func (bf *BlockFetcher) Close() {
-	close(bf.stopRunning)
-	bf.wg.Wait()
 }
