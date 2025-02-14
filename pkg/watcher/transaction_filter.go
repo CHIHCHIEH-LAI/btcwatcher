@@ -53,12 +53,12 @@ func (tf *TransactionFilter) Run() {
 func (tf *TransactionFilter) runWorker() {
 	defer tf.wg.Done()
 
-	for {
+	for tx := range tf.txChannel {
 		select {
-		case tx := <-tf.txChannel:
-			tf.filterTransaction(tx)
 		case <-tf.stopRunning:
 			return
+		default:
+			tf.filterTransaction(tx)
 		}
 	}
 }

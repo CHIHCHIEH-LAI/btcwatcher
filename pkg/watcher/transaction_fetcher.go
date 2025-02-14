@@ -50,12 +50,12 @@ func (tf *TransactionFetcher) Run() {
 func (tf *TransactionFetcher) runWorker() {
 	defer tf.wg.Done()
 
-	for {
+	for txRange := range tf.txRangeChannel {
 		select {
-		case txRange := <-tf.txRangeChannel:
-			tf.fetchTransactions(txRange)
 		case <-tf.stopRunning:
 			return
+		default:
+			tf.fetchTransactions(txRange)
 		}
 	}
 }

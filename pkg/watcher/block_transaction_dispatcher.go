@@ -42,12 +42,12 @@ func (btd *BlockTransactionDispatcher) Run() {
 func (btd *BlockTransactionDispatcher) runWorker() {
 	defer btd.wg.Done()
 
-	for {
+	for block := range btd.blockChannel {
 		select {
-		case block := <-btd.blockChannel:
-			btd.dispatchBlockTransactions(block)
 		case <-btd.stopRunning:
 			return
+		default:
+			btd.dispatchBlockTransactions(block)
 		}
 	}
 }

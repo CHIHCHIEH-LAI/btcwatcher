@@ -52,13 +52,13 @@ func (bf *BlockFetcher) Run() {
 func (bf *BlockFetcher) runWorker() {
 	defer bf.wg.Done()
 
-	for {
+	for heightRange := range bf.heightChannel {
 		select {
-		case heightRange := <-bf.heightChannel:
-			log.Printf("Fetching blocks for height range: %d-%d", heightRange.StartHeight, heightRange.EndHeight)
-			bf.fetchBlocks(heightRange)
 		case <-bf.stopRunning:
 			return
+		default:
+			log.Printf("Fetching blocks for height range: %d-%d", heightRange.StartHeight, heightRange.EndHeight)
+			bf.fetchBlocks(heightRange)
 		}
 	}
 }
