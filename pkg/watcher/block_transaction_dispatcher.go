@@ -33,13 +33,13 @@ func NewBlockTransactionDispatcher(
 // Run runs the block transaction dispatcher
 func (btd *BlockTransactionDispatcher) Run() {
 	for i := 0; i < btd.nWorkers; i++ {
+		btd.wg.Add(1)
 		go btd.runWorker()
 	}
 }
 
 // runWorker runs a worker that dispatches block transactions
 func (btd *BlockTransactionDispatcher) runWorker() {
-	btd.wg.Add(1)
 	defer btd.wg.Done()
 
 	for {
