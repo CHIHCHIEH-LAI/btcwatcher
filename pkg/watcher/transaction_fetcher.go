@@ -41,13 +41,13 @@ func NewTransactionFetcher(
 // Run runs the transaction fetcher
 func (tf *TransactionFetcher) Run() {
 	for i := 0; i < tf.nWorkers; i++ {
+		tf.wg.Add(1)
 		go tf.runWorker()
 	}
 }
 
 // runWorker runs a worker that fetches transactions
 func (tf *TransactionFetcher) runWorker() {
-	tf.wg.Add(1)
 	defer tf.wg.Done()
 
 	for {

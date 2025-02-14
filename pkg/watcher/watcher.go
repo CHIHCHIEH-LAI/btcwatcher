@@ -72,6 +72,7 @@ func getBaseUrl(network string) string {
 func (w *BTCWatcher) Run() {
 	log.Println("BTCWatcher is running")
 
+	w.wg.Add(1)
 	go w.watchForNewBlock()
 
 	go w.blockFetcher.Run()
@@ -84,7 +85,6 @@ func (w *BTCWatcher) Run() {
 
 // collectNewBlock collects new block
 func (w *BTCWatcher) watchForNewBlock() {
-	w.wg.Add(1)
 	defer w.wg.Done()
 	for {
 		select {
