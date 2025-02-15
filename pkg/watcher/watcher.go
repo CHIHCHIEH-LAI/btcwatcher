@@ -102,11 +102,12 @@ func (w *BTCWatcher) fetchNewBlocks() {
 	for i := w.lastFetchedBlockHeight + 1; i <= latestConfirmedBlockHeight; i += 10 {
 		w.heightChannel <- &model.HeightRange{
 			StartHeight: i,
-			EndHeight:   min(i+10, latestConfirmedBlockHeight),
+			EndHeight:   min(i+9, latestConfirmedBlockHeight),
 		}
-		// Update the last block height
-		w.updatelastFetchedBlockHeight(min(i+10, latestConfirmedBlockHeight))
 	}
+
+	// Update the last block height
+	w.updatelastFetchedBlockHeight(latestConfirmedBlockHeight)
 }
 
 // getLatestConfirmedBlockHeight gets the latest confirmed block height
