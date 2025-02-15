@@ -99,6 +99,11 @@ func (w *BTCWatcher) fetchNewBlocks() {
 	// Get the latest confirmed block height
 	latestConfirmedBlockHeight := w.getLatestConfirmedBlockHeight()
 
+	if latestConfirmedBlockHeight <= w.lastFetchedBlockHeight {
+		log.Println("No new block to fetch")
+		return
+	}
+
 	for i := w.lastFetchedBlockHeight + 1; i <= latestConfirmedBlockHeight; i += 10 {
 		w.heightChannel <- &model.HeightRange{
 			StartHeight: i,
@@ -112,7 +117,8 @@ func (w *BTCWatcher) fetchNewBlocks() {
 
 // getLatestConfirmedBlockHeight gets the latest confirmed block height
 func (w *BTCWatcher) getLatestConfirmedBlockHeight() int {
-	return w.getLatestBlockHeight() - w.blockConfirmedRequired
+	latestConfirmedBlockHeight := w.getLatestBlockHeight() - w.blockConfirmedRequired
+	return latestConfirmedBlockHeight
 }
 
 // getLatestBlockHeight gets the latest block height
